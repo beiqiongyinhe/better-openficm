@@ -22,7 +22,7 @@ import { getDatabase } from "./database";
 const MAX_EDITOR_CONTENT_CHARACTERS = 100_000;
 const MAX_EDITOR_CONTENT_LINES = 2_000;
 
-type ProjectRow = { id: string; title: string; description: string; created_at: string; updated_at: string };
+type ProjectRow = { id: string; title: string; description: string; cover_image_path: string | null; created_at: string; updated_at: string };
 type VolumeRow = { id: string; project_id: string; title: string; order_index: number };
 type ChapterRow = { id: string; project_id: string; volume_id: string; title: string; content: string; order_index: number; updated_at: string };
 type ProviderRow = { id: string; name: string; type: ProviderType; base_url: string; api_key_ref: string; created_at: string };
@@ -69,7 +69,9 @@ type WorldInfoEntryRow = {
 };
 
 const mapProject = (row: ProjectRow): Project => ({
-  id: row.id, title: row.title, description: row.description, createdAt: row.created_at, updatedAt: row.updated_at,
+  id: row.id, title: row.title, description: row.description,
+  coverImagePath: row.cover_image_path ?? null,
+  createdAt: row.created_at, updatedAt: row.updated_at,
 });
 const mapVolume = (row: VolumeRow): Volume => ({
   id: row.id, projectId: row.project_id, title: row.title, orderIndex: row.order_index,
@@ -160,6 +162,39 @@ function generatedMessageTitle(content: string): string {
   return content.replace(/\s+/g, " ").trim().slice(0, 24) || "新对话";
 }
 
+/**
+ * 作品的可编辑字段：书名、简介与封面。
+ * 封面用可选字段区分"不修改"（undefined）与"清除封面"（null）。
+ */
+export interface ProjectEditInput {
+  title?: string;
+  description?: string;
+  coverImagePath?: string | null;
+}
+
+export async function updateProject(id: string, input: ProjectEditInput): Promise<Project> {
+  const db = await getDatabase();
+  const project = await db.getFirstAsync<ProjectRow>("SELECT * FROM projects WHERE id = ?", id);
+  if (!project) throw new Error("作品不存在");
+  const normalizedTitle = input.title === undefined ? project.title : requiredText(input.title, "作品名");
+  const normalizedDescription = input.description === undefined ? project.description : input.description.trim();
+  const normalizedCover = input.coverImagePath === undefined ? (project.cover_image_path ?? null) : input.coverImagePath;
+  const now = new Date().toISOString();
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync(
+      "UPDATE projects SET title = ?, description = ?, cover_image_path = ?, updated_at = ? WHERE id = ?",
+      normalizedTitle, normalizedDescription, normalizedCover, now, id,
+    );
+  });
+  return mapProject({
+    ...project,
+    title: normalizedTitle,
+    description: normalizedDescription,
+    cover_image_path: normalizedCover,
+    updated_at: now,
+  });
+}
+
 export async function listProjects(): Promise<Project[]> {
   const db = await getDatabase();
   return (await db.getAllAsync<ProjectRow>("SELECT * FROM projects ORDER BY updated_at DESC")).map(mapProject);
@@ -197,9 +232,96 @@ export async function createProject(title: string, description = ""): Promise<Pr
       chapterId, id, "第一章",
     );
   });
-  return { id, title: normalizedTitle, description: normalizedDescription, createdAt: now, updatedAt: now };
+  return {
+    id,
+    title: normalizedTitle,
+    description: normalizedDescription,
+    coverImagePath: null,
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
+/**
+ * 导入用：一次性建立作品、全部卷与全部章节。
+ * 与 createProject 的区别是不额外创建占位的“第一章”，避免导入后残留一个空章节。
+ * 章节按卷分组传入（导入侧已按原文顺序切分并分组），卷与章的顺序原样保留。
+ */
+export async function createProjectWithChapters(
+  title: string,
+  description: string,
+  volumes: ReadonlyArray<{ title: string; chapters: ReadonlyArray<{ title: string; content: string }> }>,
+): Promise<Project> {
+  const db = await getDatabase();
+  const id = createId();
+  const now = new Date().toISOString();
+  const normalizedTitle = requiredText(title, "作品名");
+  const normalizedDescription = description.trim();
+
+  const prepared: { id: string; title: string; content: string }[][] = [];
+  const normalizedVolumeTitles: string[] = [];
+  for (let volumeIndex = 0; volumeIndex < volumes.length; volumeIndex += 1) {
+    const volume = volumes[volumeIndex];
+    const chapters: { id: string; title: string; content: string }[] = [];
+    for (let index = 0; index < volume.chapters.length; index += 1) {
+      const chapter = volume.chapters[index];
+      chapters.push({
+        id: createId(),
+        title: requiredText(chapter.title, "章节标题"),
+        content: chapter.content,
+      });
+    }
+    // 空卷直接跳过，避免导入后留下没有任何章节的卷。
+    if (chapters.length === 0) continue;
+    normalizedVolumeTitles.push(requiredText(volume.title, "卷名"));
+    prepared.push(chapters);
+  }
+  if (prepared.length === 0) {
+    normalizedVolumeTitles.push("正文");
+    prepared.push([{ id: createId(), title: "第一章", content: "" }]);
+  }
+  for (const chapters of prepared) {
+    for (const chapter of chapters) {
+      validateChapterContent(chapter.content);
+    }
+  }
+  const volumeIds = prepared.map(() => createId());
+  const volumeOrderIndexes = volumeIds.map((_, index) => index + 1);
+
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    await txn.runAsync(
+      "INSERT INTO projects(id, title, description, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+      id, normalizedTitle, normalizedDescription, now, now,
+    );
+    for (let volumeIndex = 0; volumeIndex < volumeIds.length; volumeIndex += 1) {
+      await txn.runAsync(
+        "INSERT INTO volumes(id, project_id, title, order_index) VALUES (?, ?, ?, ?)",
+        volumeIds[volumeIndex], id, normalizedVolumeTitles[volumeIndex], volumeOrderIndexes[volumeIndex],
+      );
+      const chapters = prepared[volumeIndex];
+      for (let index = 0; index < chapters.length; index += 1) {
+        const chapter = chapters[index];
+        await txn.runAsync(
+          "INSERT INTO chapters(id, project_id, volume_id, title, content, order_index, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+          chapter.id, id, volumeIds[volumeIndex], chapter.title, chapter.content, index + 1, now,
+        );
+        await txn.runAsync(
+          "INSERT INTO chapter_fts(chapter_id, project_id, title, content) VALUES (?, ?, ?, ?)",
+          chapter.id, id, chapter.title, chapter.content,
+        );
+      }
+    }
+  });
+
+  return {
+    id,
+    title: normalizedTitle,
+    description: normalizedDescription,
+    coverImagePath: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
 export async function deleteProject(id: string): Promise<void> {
   const db = await getDatabase();
   await db.withExclusiveTransactionAsync(async (txn) => {
@@ -522,6 +644,46 @@ export async function saveModel(input: Omit<Model, "id"> & { id?: string }): Pro
   return { id, providerId: input.providerId, name, modelId, temperature: input.temperature, maxTokens: input.maxTokens };
 }
 
+async function readSettingJson(key: string): Promise<unknown> {
+  const value = await getSetting(key);
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+// 智能体可以绑定具体模型（agent.definitions 里保存 modelId）。模型被删除后必须清空这些绑定，
+// 否则设置页的智能体列表会一直显示“模型已删除”，运行时也只是静默回退到全局模型。
+async function detachModelFromAgents(modelId: string): Promise<void> {
+  const value = await readSettingJson("agent.definitions");
+  if (!Array.isArray(value)) return;
+  let changed = false;
+  const next = value.map((item: unknown) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+    const record = item as Record<string, unknown>;
+    if (record.modelId !== modelId) return item;
+    changed = true;
+    return { ...record, modelId: "" };
+  });
+  if (changed) await setSetting("agent.definitions", JSON.stringify(next));
+}
+
+export async function deleteModel(modelId: string): Promise<void> {
+  const db = await getDatabase();
+  const existing = await db.getFirstAsync<{ id: string }>("SELECT id FROM models WHERE id = ?", modelId);
+  if (!existing) return;
+  await db.withExclusiveTransactionAsync(async (txn) => {
+    // activeModelId 是纯字符串配置，没有外键保护，必须手动清理（与 deleteProvider 保持一致）。
+    await txn.runAsync("DELETE FROM app_settings WHERE key = 'activeModelId' AND value = ?", modelId);
+    // chat_sessions.model_id 虽然声明了 ON DELETE SET NULL，这里显式置空以对齐 deleteProvider 的行为。
+    await txn.runAsync("UPDATE chat_sessions SET model_id = NULL WHERE model_id = ?", modelId);
+    await txn.runAsync("DELETE FROM models WHERE id = ?", modelId);
+  });
+  await detachModelFromAgents(modelId);
+}
+
 export async function listChatSessions(projectId: string): Promise<ChatSession[]> {
   const db = await getDatabase();
   return (await db.getAllAsync<SessionRow>(
@@ -621,6 +783,7 @@ export async function replaceUserMessageBranch(
   sessionId: string,
   messageId: string,
   content: string,
+  metadata: ChatMessageMetadata | null = null,
 ): Promise<{ message: ChatMessage; session: ChatSession }> {
   if (!content.trim()) throw new Error("消息内容不能为空");
   const db = await getDatabase();
@@ -646,17 +809,18 @@ export async function replaceUserMessageBranch(
       sessionId,
       role: "user",
       content,
-      metadata: null,
+      metadata,
       createdAt,
     };
     const title = earlierUser ? session.title : generatedMessageTitle(content);
     await txn.runAsync("DELETE FROM chat_messages WHERE session_id = ? AND rowid >= ?", sessionId, target.rowid);
     await txn.runAsync(
-      "INSERT INTO chat_messages(id, project_id, session_id, role, content, metadata_json, created_at) VALUES (?, ?, ?, 'user', ?, NULL, ?)",
+      "INSERT INTO chat_messages(id, project_id, session_id, role, content, metadata_json, created_at) VALUES (?, ?, ?, 'user', ?, ?, ?)",
       message.id,
       message.projectId,
       message.sessionId,
       message.content,
+      metadata ? JSON.stringify(metadata) : null,
       message.createdAt,
     );
     await txn.runAsync(

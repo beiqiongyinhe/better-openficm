@@ -45,3 +45,5 @@ desktop/out
 /mobile-rn/assets/models/*.gguf
 /mobile-rn/android/app/*.keystore
 /mobile-rn/android/local.properties
+*.orig
+/mobile-rn/assets_orig_backup/

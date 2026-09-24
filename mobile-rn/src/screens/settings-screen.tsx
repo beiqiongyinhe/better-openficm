@@ -2,11 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useNavigation } from "@react-navigation/native";
-import { useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, BackHandler, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 
 import { Button, ErrorNotice, Field, Header, Screen, SheetBackdrop } from "@/components/ui";
 import {
+  deleteModel,
   deleteProvider,
   getProviderApiKey,
   getSetting,
@@ -72,6 +73,25 @@ export function SettingsScreen() {
   const [modelFilter, setModelFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<SettingsCategory | null>(null);
+  const [editingModel, setEditingModel] = useState<Model | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editModelId, setEditModelId] = useState("");
+  const [editTemperature, setEditTemperature] = useState("0.8");
+  const [editMaxTokens, setEditMaxTokens] = useState(String(DEFAULT_MAX_OUTPUT_TOKENS));
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // 分类页是屏内条件渲染，不是真实导航路由，硬件返回键默认会冒泡给系统直接退出应用。
+  // 这里接管：只要还停在某个分类页，就退回设置列表，其余情况交还系统。
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (activeCategory !== null) {
+        setActiveCategory(null);
+        return true;
+      }
+      return false;
+    });
+    return () => subscription.remove();
+  }, [activeCategory]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -158,6 +178,63 @@ export function SettingsScreen() {
   const removeProvider = async (provider: Provider) => {
     try {
       await deleteProvider(provider);
+      refreshData();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
+    }
+  };
+
+  const openModelEditor = (model: Model) => {
+    setError(null);
+    setEditingModel(model);
+    setEditName(model.name);
+    setEditModelId(model.modelId);
+    setEditTemperature(String(model.temperature));
+    setEditMaxTokens(String(model.maxTokens));
+  };
+
+  const closeModelEditor = () => {
+    setEditingModel(null);
+    setSavingEdit(false);
+  };
+
+  const submitModelEdit = async () => {
+    if (!editingModel || !editName.trim() || !editModelId.trim()) return;
+    const parsedTemperature = Number(editTemperature);
+    const parsedMaxTokens = Number(editMaxTokens);
+    if (!Number.isFinite(parsedTemperature) || parsedTemperature < 0 || parsedTemperature > 2) {
+      setError("温度必须在 0 到 2 之间");
+      return;
+    }
+    if (!Number.isInteger(parsedMaxTokens) || parsedMaxTokens < 1 || parsedMaxTokens > MAX_CONFIGURED_OUTPUT_TOKENS) {
+      setError(`最大输出 Token 数必须在 1 到 ${MAX_CONFIGURED_OUTPUT_TOKENS} 之间；1M 通常是上下文窗口，不需要填写 1000000`);
+      return;
+    }
+    setSavingEdit(true);
+    setError(null);
+    try {
+      // saveModel 对已有 id 走 ON CONFLICT DO UPDATE，修改参数不会影响当前选中状态。
+      await saveModel({
+        id: editingModel.id,
+        providerId: editingModel.providerId,
+        name: editName,
+        modelId: editModelId,
+        temperature: parsedTemperature,
+        maxTokens: parsedMaxTokens,
+      });
+      closeModelEditor();
+      refreshData();
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : String(saveError));
+      setSavingEdit(false);
+    }
+  };
+
+  const removeModel = async (model: Model) => {
+    setError(null);
+    try {
+      await deleteModel(model.id);
+      if (editingModel?.id === model.id) closeModelEditor();
       refreshData();
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : String(deleteError));
@@ -285,13 +362,31 @@ export function SettingsScreen() {
             </View>
           </View>
           {(modelsByProvider.get(provider.id) ?? []).map((model) => (
-            <Pressable key={model.id} onPress={() => void selectModel(model)} style={styles.modelRow}>
-              <Ionicons name={activeModelId === model.id ? "radio-button-on" : "radio-button-off"} size={20} color={activeModelId === model.id ? colors.primary : colors.textMuted} />
-              <View style={styles.modelText}>
-                <Text style={styles.modelName}>{model.name}</Text>
-                <Text style={styles.modelId}>{model.modelId}</Text>
-              </View>
-            </Pressable>
+            <View key={model.id} style={[styles.modelRow, activeModelId === model.id && styles.modelRowActive]}>
+              <Pressable
+                accessibilityLabel={`将 ${model.name} 设为默认模型`}
+                onPress={() => void selectModel(model)}
+                style={styles.modelSelectArea}
+              >
+                <Ionicons name={activeModelId === model.id ? "radio-button-on" : "radio-button-off"} size={20} color={activeModelId === model.id ? colors.primary : colors.textMuted} />
+                <View style={styles.modelText}>
+                  <Text style={styles.modelName}>{model.name}</Text>
+                  <Text style={styles.modelId} numberOfLines={1}>{model.modelId}</Text>
+                  <Text style={styles.modelMeta}>温度 {model.temperature} · 最大输出 {model.maxTokens}</Text>
+                </View>
+              </Pressable>
+              <Pressable accessibilityLabel={`编辑 ${model.name}`} onPress={() => openModelEditor(model)} style={styles.iconButton}>
+                <Ionicons name="create-outline" size={20} color={colors.textMuted} />
+              </Pressable>
+              <Pressable accessibilityLabel={`删除 ${model.name}`} onPress={() => {
+                Alert.alert("删除模型", `删除 ${model.name}？该模型的对话记录会保留，但不再指定模型。`, [
+                  { text: "取消", style: "cancel" },
+                  { text: "删除", style: "destructive", onPress: () => void removeModel(model) },
+                ]);
+              }} style={styles.iconButton}>
+                <Ionicons name="trash-outline" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
           ))}
         </View>
       ))}
@@ -366,6 +461,35 @@ export function SettingsScreen() {
           </View>
         </SheetBackdrop>
       </Modal>
+
+      <Modal
+        visible={editingModel !== null}
+        transparent
+        animationType="slide"
+        onRequestClose={closeModelEditor}
+      >
+        <SheetBackdrop onPress={closeModelEditor}>
+          <View style={styles.modelSheet}>
+            <View style={styles.sheetHeader}>
+              <View style={styles.providerInfo}>
+                <Text style={styles.sectionTitle}>编辑模型</Text>
+                <Text style={styles.providerUrl} numberOfLines={1}>{editingModel?.modelId ?? ""}</Text>
+              </View>
+              <Pressable accessibilityLabel="关闭编辑模型" onPress={closeModelEditor} style={styles.iconButton}>
+                <Ionicons name="close" size={24} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.editorBody}>
+              <Field label="模型名称" value={editName} onChangeText={setEditName} />
+              <Field label="模型 ID" value={editModelId} onChangeText={setEditModelId} autoCapitalize="none" />
+              <Field label="温度" value={editTemperature} onChangeText={setEditTemperature} keyboardType="decimal-pad" />
+              <Field label="最大输出 Token 数" value={editMaxTokens} onChangeText={setEditMaxTokens} keyboardType="number-pad" />
+              <Text style={styles.fieldHint}>单次回复长度，不是上下文窗口；1M 上下文模型保持 {DEFAULT_MAX_OUTPUT_TOKENS} 或按需填写，最高 {MAX_CONFIGURED_OUTPUT_TOKENS}。</Text>
+              <Button label="保存修改" onPress={() => void submitModelEdit()} disabled={!editName.trim() || !editModelId.trim()} loading={savingEdit} />
+            </ScrollView>
+          </View>
+        </SheetBackdrop>
+      </Modal>
     </Screen>
   );
 }
@@ -393,10 +517,14 @@ const styles = StyleSheet.create({
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   fetchButton: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm },
   fetchButtonText: { color: colors.primary, fontSize: 13, fontWeight: "700" },
-  modelRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
-  modelText: { flex: 1 },
+  modelRow: { flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingVertical: spacing.sm, borderRadius: radius.sm },
+  modelRowActive: { backgroundColor: "#E6F3EF" },
+  modelSelectArea: { flex: 1, minWidth: 0, flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 44, paddingLeft: spacing.sm },
+  modelText: { flex: 1, minWidth: 0 },
   modelName: { color: colors.text, fontSize: 15, fontWeight: "600" },
   modelId: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
+  modelMeta: { color: colors.textMuted, fontSize: 11, marginTop: 3 },
+  editorBody: { padding: spacing.lg, gap: spacing.md },
   fieldHint: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: -spacing.sm },
   providerChoices: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   choice: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md },

@@ -1,9 +1,12 @@
+import type { DocumentFormat } from "@/lib/text-extract";
+
 export type ProviderType = "openai-compatible" | "google-genai" | "anthropic";
 
 export interface Project {
   id: string;
   title: string;
   description: string;
+  coverImagePath: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -168,7 +171,21 @@ export interface AgentClarificationResponse {
   cancelled: boolean;
 }
 
+/** 助手附件：用户发送消息时随附的文件，正文已抽取为纯文本并落盘。 */
+export interface ChatAttachment {
+  id: string;
+  /** 用户选择的原始文件名，用于界面展示 */
+  name: string;
+  /** 抽取出的纯文本格式 */
+  format: DocumentFormat;
+  sizeBytes: number;
+  characterCount: number;
+  /** 抽取后的纯文本文件在应用文档目录中的 URI */
+  textUri: string;
+}
+
 export interface ChatMessageMetadata {
+  attachments?: ChatAttachment[];
   agentTrace?: AgentRunTrace;
   taskStatus?: "completed" | "failed";
   errorMessage?: string;

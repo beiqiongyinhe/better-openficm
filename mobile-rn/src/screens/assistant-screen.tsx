@@ -5,20 +5,24 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   FlatList,
   Modal,
+  PanResponder,
   Pressable,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import type { LayoutChangeEvent, NativeScrollEvent, NativeSyntheticEvent } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 
 import { AgentRunError, runAgent } from "@/agent/runtime";
 import { AgentQuestionSheet, AgentTraceView } from "@/components/agent-run-view";
 import { MessageActionBar } from "@/components/message-action-bar";
 import { Button, EmptyState, ErrorNotice, Header, Screen, SheetBackdrop } from "@/components/ui";
+import { formatAttachmentSize, pickChatAttachment } from "@/lib/attachments";
 import {
   addMessage,
   createChatSession,
@@ -48,6 +52,7 @@ import type {
   AgentClarificationRequest,
   AgentClarificationResponse,
   AgentRunTrace,
+  ChatAttachment,
   ChatMessage,
   ChatSession,
   Model,
@@ -166,6 +171,40 @@ function ErrorDetails({ detail }: { detail: string }) {
   );
 }
 
+/** 用户长消息折叠：超过字符阈值时默认只显示若干行，并提供展开/折叠按钮。 */
+const COLLAPSE_CHARACTER_THRESHOLD = 600;
+const COLLAPSED_LINE_COUNT = 12;
+
+/** 对话进度条滑块高度，与 styles.progressThumb 保持一致。 */
+const PROGRESS_THUMB_HEIGHT = 44;
+
+function CollapsibleMessageText({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const collapsible = content.length > COLLAPSE_CHARACTER_THRESHOLD;
+  return (
+    <View style={styles.messageTextWrap}>
+      <Text
+        selectable
+        style={styles.messageText}
+        numberOfLines={collapsible && !expanded ? COLLAPSED_LINE_COUNT : undefined}
+      >
+        {content}
+      </Text>
+      {collapsible ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={expanded ? "折叠这条消息" : "展开这条消息"}
+          onPress={() => setExpanded((value) => !value)}
+          style={styles.messageCollapseToggle}
+        >
+          <Text style={styles.messageCollapseText}>{expanded ? "收起" : "展开"}</Text>
+          <Ionicons name={expanded ? "chevron-up" : "chevron-down"} size={15} color={colors.primary} />
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
 export function AssistantScreen() {
   const navigation = useNavigation<BottomTabNavigationProp<RootTabParamList>>();
   const projectId = useAppStore((state) => state.currentProjectId);
@@ -195,12 +234,120 @@ export function AssistantScreen() {
   const [pendingQuestion, setPendingQuestion] = useState<AgentClarificationRequest | null>(null);
   const [retryRequest, setRetryRequest] = useState<RetryRequest | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [pendingAttachments, setPendingAttachments] = useState<ChatAttachment[]>([]);
+  const [pickingAttachment, setPickingAttachment] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const atBottomRef = useRef(true);
+  const lastScrollAtRef = useRef(0);
   const listRef = useRef<FlatList<ChatMessage>>(null);
   const composerRef = useRef<TextInput>(null);
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
   const questionResolverRef = useRef<((response: AgentClarificationResponse) => void) | null>(null);
-  const providerById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers]);
+  const scrollMetricsRef = useRef({ contentHeight: 0, viewHeight: 0 });
+  const trackHeightRef = useRef(0);
+  const lastScrollOffsetRef = useRef(0);
+  const thumbTopValueRef = useRef(0);
+  const progressDragStartRef = useRef(0);
+  const progressTapOffsetRef = useRef(0);
+  const progressMovedRef = useRef(false);
+  const thumbTop = useRef(new Animated.Value(0)).current;
+const providerById = useMemo(() => new Map(providers.map((provider) => [provider.id, provider])), [providers]);
+
+  const setAtBottomState = useCallback((next: boolean) => {
+    if (atBottomRef.current === next) return;
+    atBottomRef.current = next;
+    setAtBottom(next);
+  }, []);
+
+  const markAutoScroll = useCallback(() => {
+    lastScrollAtRef.current = Date.now();
+  }, []);
+
+  const syncProgressThumb = useCallback((offsetY: number) => {
+    const { contentHeight, viewHeight } = scrollMetricsRef.current;
+    const trackHeight = trackHeightRef.current;
+    const maxScroll = Math.max(0, contentHeight - viewHeight);
+    const maxThumbTop = Math.max(0, trackHeight - PROGRESS_THUMB_HEIGHT);
+    const ratio = maxScroll > 0 ? Math.min(1, Math.max(0, offsetY / maxScroll)) : 0;
+    const nextTop = ratio * maxThumbTop;
+    thumbTopValueRef.current = nextTop;
+    thumbTop.setValue(nextTop);
+  }, [thumbTop]);
+
+  const handleMessageScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+    scrollMetricsRef.current = {
+      contentHeight: contentSize.height,
+      viewHeight: layoutMeasurement.height,
+    };
+    lastScrollOffsetRef.current = contentOffset.y;
+    syncProgressThumb(contentOffset.y);
+    if (Date.now() - lastScrollAtRef.current < 400) {
+      setAtBottomState(true);
+      return;
+    }
+    const distance = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    setAtBottomState(distance <= 60);
+  }, [setAtBottomState, syncProgressThumb]);
+
+  const handleMessageContentSizeChange = useCallback((_width: number, height: number) => {
+    scrollMetricsRef.current = { ...scrollMetricsRef.current, contentHeight: height };
+    syncProgressThumb(lastScrollOffsetRef.current);
+  }, [syncProgressThumb]);
+
+  const scrollToBottom = useCallback(() => {
+    markAutoScroll();
+    setAtBottomState(true);
+    listRef.current?.scrollToEnd({ animated: true });
+  }, [markAutoScroll, setAtBottomState]);
+
+  const handleProgressLayout = useCallback((event: LayoutChangeEvent) => {
+    trackHeightRef.current = event.nativeEvent.layout.height;
+    syncProgressThumb(lastScrollOffsetRef.current);
+  }, [syncProgressThumb]);
+
+  /** 把滑块移动到指定纵向位置，并同步滚动列表。拖动与点击轨道共用。 */
+  const jumpToThumbTop = useCallback((nextThumbTop: number) => {
+    const { contentHeight, viewHeight } = scrollMetricsRef.current;
+    const trackHeight = trackHeightRef.current;
+    const maxThumbTop = Math.max(0, trackHeight - PROGRESS_THUMB_HEIGHT);
+    if (maxThumbTop <= 0) return;
+    const clamped = Math.min(maxThumbTop, Math.max(0, nextThumbTop));
+    const maxScroll = Math.max(0, contentHeight - viewHeight);
+    markAutoScroll();
+    thumbTopValueRef.current = clamped;
+    thumbTop.setValue(clamped);
+    listRef.current?.scrollToOffset({ offset: (clamped / maxThumbTop) * maxScroll, animated: false });
+  }, [markAutoScroll, thumbTop]);
+
+  const progressPanResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: (event) => {
+      // 拖动期间屏蔽自动滚动判定，避免 atBottom 被误置为 true
+      markAutoScroll();
+      const touchY = event.nativeEvent.locationY;
+      progressTapOffsetRef.current = touchY;
+      progressMovedRef.current = false;
+      const thumbCenter = thumbTopValueRef.current + PROGRESS_THUMB_HEIGHT / 2;
+      if (Math.abs(touchY - thumbCenter) > PROGRESS_THUMB_HEIGHT) {
+        // 触点离滑块较远：视为点击轨道，直接跳过去
+        jumpToThumbTop(touchY - PROGRESS_THUMB_HEIGHT / 2);
+      }
+      progressDragStartRef.current = thumbTopValueRef.current;
+    },
+    onPanResponderMove: (_event, gesture) => {
+      if (Math.abs(gesture.dy) > 2) progressMovedRef.current = true;
+      jumpToThumbTop(progressDragStartRef.current + gesture.dy);
+    },
+    onPanResponderRelease: () => {
+      // 没有明显位移时按点击处理，精确对齐触点
+      if (progressMovedRef.current) return;
+      jumpToThumbTop(progressTapOffsetRef.current - PROGRESS_THUMB_HEIGHT / 2);
+    },
+    onPanResponderTerminationRequest: () => false,
+  }), [jumpToThumbTop, markAutoScroll]);
 
   const cancelPendingQuestion = useCallback(() => {
     const resolver = questionResolverRef.current;
@@ -360,6 +507,7 @@ export function AssistantScreen() {
       setSelection(nextSelection);
       setError(selectionError);
       setSessionPickerVisible(false);
+      markAutoScroll();
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: false }));
     } catch (switchError) {
       setError(switchError instanceof Error ? switchError.message : String(switchError));
@@ -463,6 +611,24 @@ export function AssistantScreen() {
     setInput("");
   };
 
+  const removePendingAttachment = (attachmentId: string) => {
+    setPendingAttachments((current) => current.filter((attachment) => attachment.id !== attachmentId));
+  };
+
+  const handlePickAttachment = async () => {
+    if (sending || pickingAttachment) return;
+    setPickingAttachment(true);
+    setError(null);
+    try {
+      const attachment = await pickChatAttachment();
+      if (attachment) setPendingAttachments((current) => [...current, attachment]);
+    } catch (pickError) {
+      setError(pickError instanceof Error ? pickError.message : "附件读取失败，请重试");
+    } finally {
+      setPickingAttachment(false);
+    }
+  };
+
   const askUser = useCallback((request: AgentClarificationRequest) => new Promise<AgentClarificationResponse>((resolve) => {
     questionResolverRef.current?.({ answers: [], cancelled: true });
     questionResolverRef.current = resolve;
@@ -520,16 +686,23 @@ export function AssistantScreen() {
         if (editTarget) {
           const editIndex = messages.findIndex((message) => message.id === editTarget.id);
           if (editIndex < 0) throw new Error("要编辑的消息不存在");
-          const replacement = await replaceUserMessageBranch(sessionId, editTarget.id, content);
+          const replacement = await replaceUserMessageBranch(sessionId, editTarget.id, content, editTarget.metadata);
           userMessage = replacement.message;
           userMessageSaved = true;
           baseHistory = messages.slice(0, editIndex);
           nextHistory = [...baseHistory, userMessage];
           workingSession = replacement.session;
           setEditingMessageId(null);
+          setPendingAttachments([]);
         } else {
-          userMessage = await addMessage(sessionId, "user", content);
+          userMessage = await addMessage(
+            sessionId,
+            "user",
+            content,
+            pendingAttachments.length ? { attachments: pendingAttachments } : null,
+          );
           userMessageSaved = true;
+          setPendingAttachments([]);
           nextHistory = [...baseHistory, userMessage];
           workingSession = {
             ...workingSession,
@@ -553,6 +726,7 @@ export function AssistantScreen() {
         onTrace: (trace) => {
           latestTrace = trace;
           setLiveTrace(trace);
+          markAutoScroll();
           requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
         },
       });
@@ -669,11 +843,16 @@ export function AssistantScreen() {
         <Ionicons name="chevron-down" size={16} color={colors.textMuted} />
       </Pressable>
       <KeyboardAvoidingView style={styles.flex} behavior="height" automaticOffset>
+        <View style={styles.messagesArea}>
         <FlatList
           ref={listRef}
           style={styles.flex}
           data={messages}
           keyExtractor={(item) => item.id}
+          onScroll={handleMessageScroll}
+          onScrollBeginDrag={() => { lastScrollAtRef.current = 0; }}
+          onContentSizeChange={handleMessageContentSizeChange}
+          scrollEventThrottle={16}
           contentContainerStyle={messages.length ? styles.messages : styles.emptyMessages}
           ListFooterComponent={liveTrace ? (
             <View style={styles.liveTrace}>
@@ -718,7 +897,24 @@ export function AssistantScreen() {
                   ) : null}
                 </View>
               ) : null}
-              <Text selectable style={styles.messageText}>{item.content}</Text>
+              {item.role === "user" && item.metadata?.attachments?.length ? (
+                <View style={styles.messageAttachments}>
+                  {item.metadata.attachments.map((attachment) => (
+                    <View key={attachment.id} style={styles.messageAttachmentChip}>
+                      <Ionicons name="document-text-outline" size={15} color={colors.textMuted} />
+                      <Text style={styles.messageAttachmentName} numberOfLines={1}>
+                        {attachment.name}
+                      </Text>
+                      <Text style={styles.messageAttachmentMeta}>{formatAttachmentSize(attachment.sizeBytes)}</Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+              {item.role === "user" ? (
+                <CollapsibleMessageText content={item.content} />
+              ) : (
+                <Text selectable style={styles.messageText}>{item.content}</Text>
+              )}
               {failed && item.metadata?.errorDetail ? <ErrorDetails detail={item.metadata.errorDetail} /> : null}
               {item.role === "assistant" && messageRetry ? (
                 <MessageActionBar content={item.content} onRetry={() => void send(messageRetry)} retryDisabled={sending} />
@@ -729,6 +925,29 @@ export function AssistantScreen() {
             </View>
           )}
         />
+          {messages.length > 1 ? (
+            <View
+              accessibilityLabel="对话进度条"
+              onLayout={handleProgressLayout}
+              style={styles.progressTrack}
+              {...progressPanResponder.panHandlers}
+            >
+              <Animated.View style={[styles.progressThumb, { transform: [{ translateY: thumbTop }] }]} />
+            </View>
+          ) : null}
+        </View>
+        {!atBottom && messages.length ? (
+          <View pointerEvents="box-none" style={styles.scrollBottomWrap}>
+            <Pressable
+              accessibilityLabel="回到界面底部"
+              accessibilityRole="button"
+              onPress={scrollToBottom}
+              style={({ pressed }) => [styles.scrollBottomButton, pressed && styles.scrollBottomButtonPressed]}
+            >
+              <Ionicons name="arrow-down" size={22} color={colors.surface} />
+            </Pressable>
+          </View>
+        ) : null}
         {error ? <View style={styles.errorWrap}><ErrorNotice message={error} onRetry={retryRequest ? () => void send(retryRequest) : () => void load()} /></View> : null}
         <View style={styles.composer}>
           {editingMessageId ? (
@@ -742,7 +961,39 @@ export function AssistantScreen() {
               </Pressable>
             </View>
           ) : null}
+          {pendingAttachments.length ? (
+            <View style={styles.attachmentBanner}>
+              {pendingAttachments.map((attachment) => (
+                <View key={attachment.id} style={styles.attachmentChip}>
+                  <Ionicons name="document-text-outline" size={16} color={colors.textMuted} />
+                  <Text style={styles.attachmentName} numberOfLines={1}>{attachment.name}</Text>
+                  <Text style={styles.attachmentMeta}>{formatAttachmentSize(attachment.sizeBytes)}</Text>
+                  <Pressable
+                    accessibilityLabel={`移除附件 ${attachment.name}`}
+                    accessibilityRole="button"
+                    onPress={() => removePendingAttachment(attachment.id)}
+                    style={styles.attachmentRemove}
+                  >
+                    <Ionicons name="close" size={17} color={colors.textMuted} />
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
           <View style={styles.composerRow}>
+            <Pressable
+              accessibilityLabel="添加附件"
+              accessibilityRole="button"
+              disabled={sending || pickingAttachment}
+              onPress={() => void handlePickAttachment()}
+              style={[styles.attachButton, (sending || pickingAttachment) && styles.attachButtonDisabled]}
+            >
+              {pickingAttachment ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="attach-outline" size={22} color={colors.primary} />
+              )}
+            </Pressable>
             <TextInput
               ref={composerRef}
               value={input}
@@ -765,7 +1016,6 @@ export function AssistantScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
-
       <Modal visible={sessionPickerVisible} transparent animationType="slide" onRequestClose={() => setSessionPickerVisible(false)}>
         <SheetBackdrop onPress={() => setSessionPickerVisible(false)}>
           <View style={styles.sheet}>
@@ -902,6 +1152,12 @@ export function AssistantScreen() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   loading: { flex: 1, alignItems: "center", justifyContent: "center" },
+  messagesArea: { flex: 1 },
+  scrollBottomWrap: { position: "absolute", left: 0, right: 0, bottom: 12, alignItems: "center", zIndex: 20 },
+  scrollBottomButton: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary, shadowColor: "#000000", shadowOpacity: 0.22, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 5 },
+  scrollBottomButtonPressed: { backgroundColor: colors.primaryPressed, transform: [{ scale: 0.94 }] },
+  progressTrack: { position: "absolute", top: 8, right: 2, bottom: 8, width: 24, alignItems: "center", paddingVertical: spacing.xs, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, zIndex: 18 },
+  progressThumb: { width: 8, height: PROGRESS_THUMB_HEIGHT, borderRadius: 4, backgroundColor: colors.primary },
   headerActions: { flexDirection: "row", alignItems: "center" },
   iconButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   contextBar: {
@@ -963,6 +1219,13 @@ const styles = StyleSheet.create({
   assistantMessage: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border },
   messageRole: { color: colors.primary, fontSize: 12, fontWeight: "700" },
   messageText: { color: colors.text, fontSize: 16, lineHeight: 24 },
+  messageTextWrap: { gap: spacing.xs },
+  messageCollapseToggle: { minHeight: 32, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm },
+  messageCollapseText: { color: colors.primary, fontSize: 12, fontWeight: "600" },
+  messageAttachments: { gap: spacing.xs },
+  messageAttachmentChip: { minHeight: 30, flexDirection: "row", alignItems: "center", alignSelf: "flex-start", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surface },
+  messageAttachmentName: { flexShrink: 1, color: colors.text, fontSize: 12, fontWeight: "600" },
+  messageAttachmentMeta: { color: colors.textMuted, fontSize: 11 },
   failureCard: { minHeight: 50, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.sm, paddingHorizontal: spacing.md, borderWidth: 1, borderColor: "#E4B4AE", borderRadius: radius.md, backgroundColor: "#FFF4F2" },
   failureTitle: { color: colors.danger, fontSize: 13, fontWeight: "700" },
   failureRetry: { minHeight: 36, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingHorizontal: spacing.sm, borderWidth: 1, borderColor: colors.danger, borderRadius: radius.sm },
@@ -972,11 +1235,18 @@ const styles = StyleSheet.create({
   errorDetailsToggle: { minHeight: 28, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   errorDetailsLabel: { color: colors.textMuted, fontSize: 12, fontWeight: "600" },
   errorDetailsText: { color: colors.textMuted, fontSize: 12, lineHeight: 17 },
-  composer: { gap: spacing.xs, padding: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
+  composer: { gap: spacing.xs, padding: spacing.md, paddingRight: 30, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border, backgroundColor: colors.surface },
   composerRow: { flexDirection: "row", alignItems: "flex-end", gap: spacing.sm },
   editingBanner: { minHeight: 36, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   editingCopy: { flexDirection: "row", alignItems: "center", gap: spacing.xs },
   editingText: { color: colors.primary, fontSize: 13, fontWeight: "600" },
+  attachmentBanner: { gap: spacing.xs, paddingBottom: spacing.xs },
+  attachmentChip: { minHeight: 32, flexDirection: "row", alignItems: "center", gap: spacing.xs, paddingLeft: spacing.sm, paddingRight: spacing.xs, borderWidth: 1, borderColor: colors.border, borderRadius: radius.sm, backgroundColor: colors.surfaceMuted },
+  attachmentName: { flexShrink: 1, color: colors.text, fontSize: 12, fontWeight: "600" },
+  attachmentMeta: { color: colors.textMuted, fontSize: 11 },
+  attachmentRemove: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  attachButton: { width: 46, height: 46, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, backgroundColor: colors.surfaceMuted },
+  attachButtonDisabled: { opacity: 0.5 },
   composerInput: { flex: 1, maxHeight: 130, minHeight: 46, paddingHorizontal: spacing.md, paddingVertical: 11, borderRadius: radius.md, backgroundColor: colors.surfaceMuted, color: colors.text, fontSize: 16 },
   sendButton: { width: 46, height: 46, borderRadius: 23, alignItems: "center", justifyContent: "center", backgroundColor: colors.primary },
   sendDisabled: { opacity: 0.48 },

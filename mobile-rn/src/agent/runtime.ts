@@ -37,6 +37,7 @@ import type {
 } from "@/types";
 
 import { listNotes, noteScope } from "@/data/note-repositories";
+import { buildPromptContent } from "@/lib/attachments";
 
 import { agentTools, executeAgentTool } from "./tools";
 
@@ -828,7 +829,12 @@ export async function runAgent(input: {
     const result = await runAgentLoop({
       project: input.project,
       selection: input.selection,
-      history: input.history.map((message) => ({ role: message.role, content: message.content })),
+      history: await Promise.all(
+        input.history.map(async (message) => ({
+          role: message.role,
+          content: await buildPromptContent(message),
+        })),
+      ),
       catalog,
       agent,
       consistencyReason,

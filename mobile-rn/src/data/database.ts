@@ -67,6 +67,17 @@ async function migrateChatSessions(database: SQLite.SQLiteDatabase): Promise<voi
   }
 }
 
+/**
+ * 老版本的作品表没有封面列，这里按"查列→补列"的方式平滑升级，
+ * 已存在的作品封面保持为空，由界面回退成书名首字占位图。
+ */
+async function migrateProjectCover(database: SQLite.SQLiteDatabase): Promise<void> {
+  const columns = await database.getAllAsync<{ name: string }>("PRAGMA table_info(projects)");
+  if (!columns.some((column) => column.name === "cover_image_path")) {
+    await database.execAsync("ALTER TABLE projects ADD COLUMN cover_image_path TEXT;");
+  }
+}
+
 async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
   await database.execAsync(`
     PRAGMA journal_mode = WAL;
@@ -76,6 +87,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       id TEXT PRIMARY KEY NOT NULL,
       title TEXT NOT NULL,
       description TEXT NOT NULL DEFAULT '',
+      cover_image_path TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -314,6 +326,7 @@ async function migrate(database: SQLite.SQLiteDatabase): Promise<void> {
       AND NOT EXISTS (SELECT 1 FROM models WHERE models.id = app_settings.value);
   `);
   await migrateChatSessions(database);
+  await migrateProjectCover(database);
 }
 
 export function getDatabase(): Promise<SQLite.SQLiteDatabase> {
