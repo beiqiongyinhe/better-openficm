@@ -1,6 +1,6 @@
 <div align="center">
 
-# OpenFicM
+# Better OpenFicM
 
 **在手机上完成小说创作的本地优先 Android 应用**
 
@@ -18,7 +18,7 @@
 
 ---
 
-OpenFicM 是基于 [OpenFic](https://github.com/syrizelink/OpenFic) 重构的 Android 小说创作应用，使用 React Native、Expo SQLite 和**运行在手机上的 Agent 运行时**。安装后不需要电脑、FastAPI、Socket.IO 或 Metro。
+Better OpenFicM 是基于 [OpenFic](https://github.com/syrizelink/OpenFic) 重构的 Android 小说创作应用，使用 React Native、Expo SQLite 和**运行在手机上的 Agent 运行时**。安装后不需要电脑、FastAPI、Socket.IO 或 Metro。
 
 > 本项目是独立维护的衍生项目，并非 OpenFic 官方 Android 客户端。
 
@@ -37,7 +37,7 @@ OpenFicM 是基于 [OpenFic](https://github.com/syrizelink/OpenFic) 重构的 An
 
 手机上的 AI 写作工具大多是套壳聊天窗口：能生成文字，但作品资料、角色关系、世界设定都得你自己记着，再手动粘回提示词里。
 
-OpenFicM 把桌面端那套 Agent 体系整个搬到了手机上——智能体能读取你的章节、角色和世界书，能按权限直接写回去，还能委派子智能体分工。作品数据全部留在手机，只有真正调用模型时才联网。
+Better OpenFicM 把桌面端那套 Agent 体系整个搬到了手机上——智能体能读取你的章节、角色和世界书，能按权限直接写回去，还能委派子智能体分工。作品数据全部留在手机，只有真正调用模型时才联网。
 
 ## 下载
 
@@ -185,7 +185,7 @@ APK 输出位置：`OpenFicM-Android-<version>.apk`
 
 | 路径 | 说明 |
 | --- | --- |
-| `mobile-rn` | OpenFicM Android 应用 |
+| `mobile-rn` | Better OpenFicM Android 应用 |
 | `docs` | 使用说明、版本说明、项目交接记录 |
 | `backend`、`frontend`、`desktop` | 保留的 OpenFic 上游源码与兼容修复，便于追踪来源 |
 | `THIRD_PARTY_NOTICES.md` | 第三方项目、内容和模型声明 |

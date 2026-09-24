@@ -1,4 +1,4 @@
-# OpenFicM 项目交接记录
+# Better OpenFicM 项目交接记录
 
 最后更新：2026-08-21
 
@@ -6,7 +6,7 @@
 
 ## 1. 项目定位
 
-OpenFicM 是 OpenFic 的 React Native Android 独立移动端重构，不是把桌面端网页套进 WebView。目标是让用户在 Android 手机上本地管理小说、章节、角色、世界书和 Agent 对话；应用不需要电脑配合运行，也不需要 FastAPI、Socket.IO 或 Metro。
+Better OpenFicM 是 OpenFic 的 React Native Android 独立移动端重构，不是把桌面端网页套进 WebView。目标是让用户在 Android 手机上本地管理小说、章节、角色、世界书和 Agent 对话；应用不需要电脑配合运行，也不需要 FastAPI、Socket.IO 或 Metro。
 
 应用不是完全断网产品：作品数据和本地 Agent 运行时在手机上，用户仍可配置任意供应商的模型 API、获取供应商模型列表，并在首次启动时从 GitHub/Hugging Face 获取 Agent、Skill、嵌入和重排资源。API Base URL、Key、模型和供应商均由用户配置。
 
