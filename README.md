@@ -4,10 +4,10 @@
 
 **在手机上完成小说创作的本地优先 Android 应用**
 
-[![Release](https://img.shields.io/github/v/release/tioners/OpenFicM?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2e7d5b)](https://github.com/tioners/OpenFicM/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/tioners/OpenFicM/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2e7d5b)](https://github.com/tioners/OpenFicM/releases)
-[![Android](https://img.shields.io/badge/Android-9.0%2B-3ddc84?logo=android&logoColor=white)](https://github.com/tioners/OpenFicM/releases/latest)
-[![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/tioners/OpenFicM/releases/latest)
+[![Release](https://img.shields.io/github/v/release/beiqiongyinhe/better-openficm?label=%E6%9C%80%E6%96%B0%E7%89%88%E6%9C%AC&color=2e7d5b)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/beiqiongyinhe/better-openficm/total?label=%E4%B8%8B%E8%BD%BD%E9%87%8F&color=2e7d5b)](https://github.com/beiqiongyinhe/better-openficm/releases)
+[![Android](https://img.shields.io/badge/Android-9.0%2B-3ddc84?logo=android&logoColor=white)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
+[![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache--2.0-lightgrey)](LICENSE)
 
 [下载安装](#下载) · [使用说明](docs/USER_GUIDE.md) · [更新日志](docs/releases) · [从源码构建](#从源码构建)
@@ -41,12 +41,12 @@ OpenFicM 把桌面端那套 Agent 体系整个搬到了手机上——智能体�
 
 ## 下载
 
-前往 [Releases](https://github.com/tioners/OpenFicM/releases/latest) 下载 APK，直接安装即可，升级时覆盖安装、不要卸载。
+前往 [Releases](https://github.com/beiqiongyinhe/better-openficm/releases/latest) 下载 APK，直接安装即可，升级时覆盖安装、不要卸载。
 
 | 系统要求 | Android 9.0 及以上 |
 | --- | --- |
 | 架构 | 仅 arm64-v8a（主流 64 位手机） |
-| 安装包体积 | 约 126 MB |
+| 安装包体积 | 约 127 MB |
 | 签名证书 SHA-256 | `ff68431a9d797589a0f6034848dc1c34ae4e3acba878d5183b5afe941f08a837` |
 
 > 上表为本修改版（better-openficm）的签名指纹。上游官方版的指纹是 `c5dd7c04…63`，两者不同，无法互相覆盖安装。

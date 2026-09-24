@@ -4,10 +4,10 @@
 
 **A local-first Android app for writing fiction on your phone**
 
-[![Release](https://img.shields.io/github/v/release/tioners/OpenFicM?label=release&color=2e7d5b)](https://github.com/tioners/OpenFicM/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/tioners/OpenFicM/total?color=2e7d5b)](https://github.com/tioners/OpenFicM/releases)
-[![Android](https://img.shields.io/badge/Android-9.0%2B-3ddc84?logo=android&logoColor=white)](https://github.com/tioners/OpenFicM/releases/latest)
-[![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/tioners/OpenFicM/releases/latest)
+[![Release](https://img.shields.io/github/v/release/beiqiongyinhe/better-openficm?label=release&color=2e7d5b)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/beiqiongyinhe/better-openficm/total?color=2e7d5b)](https://github.com/beiqiongyinhe/better-openficm/releases)
+[![Android](https://img.shields.io/badge/Android-9.0%2B-3ddc84?logo=android&logoColor=white)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
+[![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache--2.0-lightgrey)](LICENSE)
 
 [Download](#download) · [User guide (Chinese)](docs/USER_GUIDE.md) · [Changelog](docs/releases) · [Build from source](#build-from-source)
@@ -30,7 +30,7 @@ OpenFicM ports the desktop Agent system to the phone. The agent reads your chapt
 
 ## Download
 
-Get the APK from [Releases](https://github.com/tioners/OpenFicM/releases/latest). Install over the previous version — do not uninstall first, that wipes local data.
+Get the APK from [Releases](https://github.com/beiqiongyinhe/better-openficm/releases/latest). Install over the previous version — do not uninstall first, that wipes local data.
 
 | | |
 | --- | --- |
