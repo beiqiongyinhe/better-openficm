@@ -2,6 +2,8 @@
 
 [简体中文](USER_GUIDE.md)
 
+> Translation note: this is an English translation of this fork's docs/USER_GUIDE.md. Menu and page names are given in English for readability, but the app itself ships no interface language switcher yet, so the text you see on screen is still in Simplified Chinese.
+
 Applies to version: 0.8.0
 
 Better OpenFicM is a local-first Android app for novel writing. Once installed it needs no PC, no FastAPI, no Socket.IO and no other self-hosted backend; works, chapters, chat history, style versions and local indexes are kept on the phone by default. Generating prose still requires a model provider that you configure yourself.

@@ -2,6 +2,8 @@
 
 [简体中文](commit-conventions.md)
 
+> Translation note: this is an English translation of this fork's docs/develop/commit-conventions.md.
+
 This project follows the [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) specification.
 
 ## Structure of a commit message

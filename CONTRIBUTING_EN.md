@@ -2,6 +2,8 @@
 
 [简体中文](CONTRIBUTING.md)
 
+> Translation note: this is an English translation of this fork's CONTRIBUTING.md.
+
 Before filing an issue, search the existing issues first, and remove API keys, tokens and private novel content from logs and screenshots.
 
 Developing for Android:

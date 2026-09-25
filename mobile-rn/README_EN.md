@@ -2,6 +2,8 @@
 
 [简体中文](README.md)
 
+> Translation note: this is an English translation of this fork's mobile-rn/README.md.
+
 This is the React Native Android project of Better OpenFicM. The app does not depend on a PC backend: business data is stored in on-device SQLite, and API keys are kept in Android SecureStore.
 
 For end-user instructions on installation, model configuration, the Agent, styles, export and troubleshooting, see the [Android user guide](../docs/USER_GUIDE_EN.md); for what changed in 0.7.3, see the [release notes](../docs/releases/v0.7.3_EN.md).
