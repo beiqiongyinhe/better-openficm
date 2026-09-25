@@ -10,9 +10,9 @@
 [![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache--2.0-lightgrey)](LICENSE)
 
-[下载安装](#下载) · [使用说明](docs/USER_GUIDE.md) · [更新日志](docs/releases) · [从源码构建](#从源码构建)
+[下载安装](#下载) · [使用说明](docs/USER_GUIDE.md) · [更新日志](CHANGELOG.md) · [版本发布说明](docs/releases) · [从源码构建](#从源码构建) · [贡献指南](CONTRIBUTING.md)
 
-[English](README_EN.md)
+[English](README_EN.md) · [User guide](docs/USER_GUIDE_EN.md) · [Changelog](CHANGELOG_EN.md) · [Contributing](CONTRIBUTING_EN.md) · [Android app notes](mobile-rn/README_EN.md)
 
 </div>
 
@@ -186,7 +186,8 @@ APK 输出位置：`OpenFicM-Android-<version>.apk`
 | 路径 | 说明 |
 | --- | --- |
 | `mobile-rn` | Better OpenFicM Android 应用 |
-| `docs` | 使用说明、版本说明、项目交接记录 |
+| `docs` | 使用说明、版本说明、项目交接记录（`*_EN.md` 为对应的英文版） |
+| 英文文档 | `README_EN.md`、`CHANGELOG_EN.md`、`CONTRIBUTING_EN.md`、`docs/**/*_EN.md`、`mobile-rn/*_EN.md` |
 | `backend`、`frontend`、`desktop` | 保留的 OpenFic 上游源码与兼容修复，便于追踪来源 |
 | `THIRD_PARTY_NOTICES.md` | 第三方项目、内容和模型声明 |
 

@@ -10,9 +10,9 @@
 [![ABI](https://img.shields.io/badge/ABI-arm64--v8a-blue)](https://github.com/beiqiongyinhe/better-openficm/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache--2.0-lightgrey)](LICENSE)
 
-[Download](#download) · [User guide (Chinese)](docs/USER_GUIDE.md) · [Changelog](docs/releases) · [Build from source](#build-from-source)
+[Download](#download) · [User guide](docs/USER_GUIDE_EN.md) · [Changelog](CHANGELOG_EN.md) · [Release notes](docs/releases) · [Build from source](#build-from-source) · [Contributing](CONTRIBUTING_EN.md)
 
-[简体中文](README.md)
+[简体中文](README.md) · [中文使用说明](docs/USER_GUIDE.md) · [中文更新日志](CHANGELOG.md) · [中文贡献指南](CONTRIBUTING.md) · [Android 版说明](mobile-rn/README.md)
 
 </div>
 
@@ -20,7 +20,7 @@
 
 Better OpenFicM is an Android adaptation of [OpenFic](https://github.com/syrizelink/OpenFic) rebuilt with React Native, Expo SQLite, and an **on-device Agent runtime**. The installed APK needs no PC, FastAPI, Socket.IO, or Metro.
 
-> This is an independently maintained derivative project, not an official OpenFic Android client. The app interface and documentation are in Simplified Chinese.
+> This is an independently maintained derivative project, not an official OpenFic Android client. The app interface is in Simplified Chinese; key documents have English versions (see the language links above).
 
 ---
 
@@ -59,7 +59,7 @@ Download only from this project's Releases. A signature conflict usually means t
 2. **Configure a model** — Settings → Models & Providers. Enter a Base URL and API Key, fetch the model list, then set a default model. OpenAI-compatible, Google Gemini, and Anthropic protocols are supported.
 3. **Start writing** — create a project on the shelf, then describe your task in the assistant.
 
-Full steps: [Android user guide](docs/USER_GUIDE.md) (Chinese).
+Full steps: [Android user guide](docs/USER_GUIDE_EN.md).
 
 ## Core capabilities
 
@@ -186,7 +186,8 @@ Output: `OpenFicM-Android-<version>.apk`
 | Path | Purpose |
 | --- | --- |
 | `mobile-rn` | The Better OpenFicM Android app |
-| `docs` | User guide, release notes, project handover record |
+| `docs` | User guide, release notes, project handover record (`*_EN.md` files are the English versions) |
+| English docs | `README_EN.md`, `CHANGELOG_EN.md`, `CONTRIBUTING_EN.md`, `docs/**/*_EN.md`, `mobile-rn/*_EN.md` |
 | `backend`, `frontend`, `desktop` | Retained OpenFic upstream sources and compatibility fixes, kept for provenance |
 | `THIRD_PARTY_NOTICES.md` | Third-party project, content, and model notices |
 
