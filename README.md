@@ -1,5 +1,16 @@
 <div align="center">
 
+> ## ⚠️ 本项目已更名为 **BOFM**，请移步新仓库
+>
+> 本仓库 `better-openficm` 为**旧版本，已停止更新**。
+> 后续开发、源码与 APK 发布均已迁移至新仓库：
+>
+> ### 👉 https://github.com/beiqiongyinhe/BOFM
+>
+> 新仓库包含：**BOFM 0.8.1 源码**（应用名与版本号已改名）+ **完整改动清单** + **APK 下载**。
+> 请前往新仓库获取最新版本。
+
+
 # Better OpenFicM
 
 **在手机上完成小说创作的本地优先 Android 应用**

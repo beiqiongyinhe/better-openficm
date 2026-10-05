@@ -1,5 +1,16 @@
 <div align="center">
 
+> ## ⚠️ This project has been renamed to **BOFM** — please move to the new repository
+>
+> This repository (`better-openficm`) is the **old home and is no longer updated**.
+> Development, source code, and APK releases have all moved to:
+>
+> ### 👉 https://github.com/beiqiongyinhe/BOFM
+>
+> The new repository contains: **BOFM 0.8.1 source** (app name and version renamed) + a **full list of changes** + **APK downloads**.
+> Please head there for the latest version.
+
+
 # Better OpenFicM
 
 **A local-first Android app for writing fiction on your phone**
